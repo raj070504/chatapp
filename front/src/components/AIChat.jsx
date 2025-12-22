@@ -10,7 +10,7 @@ const AIChat = () => {
   const messagesEndRef = useRef(null);
 
   // Replace with your OpenAI API key
-  const OPENAI_API_KEY = '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';
+  const OPENAI_API_KEY = 'xx';
 
   useEffect(() => {
     // Initial welcome message
