@@ -127,12 +127,12 @@ const Login = () => {
                 />
               </div>
               <button type="submit" className="login-button">
+              {/* <button type="submit" className="login-button d-none">
                 <span>Send OTP</span>
                 <svg className="button-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                   <polyline points="12,5 19,12 12,19"></polyline>
                 </svg>
-              </button>
               
               <div className="divider">
                 <span>or</span>

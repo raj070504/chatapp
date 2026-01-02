@@ -42,6 +42,159 @@ import '../styles/MathChat.css';
     ).join('\n');
   };
 
+// Add after parseMatrixInput function
+
+function parseSplineInput(input) {
+    try {
+        // Expected format: (x0,y0) (x1,y1) (x2,y2) ...
+        const points = [];
+        const matches = input.matchAll(/\(([^,]+),([^)]+)\)/g);
+        
+        for (const match of matches) {
+            const x = parseFloat(match[1].trim());
+            const y = parseFloat(match[2].trim());
+            
+            if (isNaN(x) || isNaN(y)) {
+                throw new Error(`Invalid point: (${match[1]},${match[2]})`);
+            }
+            
+            points.push({ x, y });
+        }
+        
+        if (points.length < 3) {
+            throw new Error("Need at least 3 points for spline interpolation");
+        }
+        
+        // Sort points by x value
+        points.sort((a, b) => a.x - b.x);
+        
+        return { points, success: true };
+    } catch (error) {
+        return { error: error.message, success: false };
+    }
+}
+
+function cubicSpline(points) {
+    const n = points.length - 1;
+    const steps = [];
+    
+    // Step 1: Calculate h values
+    const h = [];
+    for (let i = 0; i < n; i++) {
+        h[i] = points[i + 1].x - points[i].x;
+    }
+    
+    let tableHTML = '<table style="width: 100%; border-collapse: collapse; margin: 20px 0;">';
+    tableHTML += '<tr style="background-color: #f0f0f0;"><th style="border: 1px solid #ddd; padding: 10px;">i</th><th style="border: 1px solid #ddd; padding: 10px;">x<sub>i</sub></th><th style="border: 1px solid #ddd; padding: 10px;">y<sub>i</sub></th><th style="border: 1px solid #ddd; padding: 10px;">h<sub>i</sub></th></tr>';
+    
+    for (let i = 0; i <= n; i++) {
+        tableHTML += `<tr><td style="border: 1px solid #ddd; padding: 10px; text-align: center;">${i}</td>`;
+        tableHTML += `<td style="border: 1px solid #ddd; padding: 10px; text-align: center;">${points[i].x.toFixed(4)}</td>`;
+        tableHTML += `<td style="border: 1px solid #ddd; padding: 10px; text-align: center;">${points[i].y.toFixed(4)}</td>`;
+        tableHTML += `<td style="border: 1px solid #ddd; padding: 10px; text-align: center;">${i < n ? h[i].toFixed(4) : '-'}</td></tr>`;
+    }
+    tableHTML += '</table>';
+    
+    steps.push({
+        description: "Input Points and h values",
+        content: tableHTML,
+        detail: `h<sub>i</sub> = x<sub>i+1</sub> - x<sub>i</sub>`
+    });
+    
+    // Step 2: Build tridiagonal system for natural spline
+    const A = Array(n + 1).fill(0).map(() => Array(n + 1).fill(0));
+    const b = Array(n + 1).fill(0);
+    
+    // Natural boundary conditions: M0 = Mn = 0
+    A[0][0] = 1;
+    A[n][n] = 1;
+    
+    for (let i = 1; i < n; i++) {
+        A[i][i - 1] = h[i - 1];
+        A[i][i] = 2 * (h[i - 1] + h[i]);
+        A[i][i + 1] = h[i];
+        
+        b[i] = 6 * ((points[i + 1].y - points[i].y) / h[i] - 
+                    (points[i].y - points[i - 1].y) / h[i - 1]);
+    }
+    
+    steps.push({
+        description: "Tridiagonal System",
+        content: `$$${matrixToLatex22(A.map((row, i) => [...row, b[i]]))}$$`,
+        detail: "System AM = b for second derivatives M"
+    });
+    
+    // Step 3: Solve tridiagonal system (Thomas algorithm)
+    const M = thomasAlgorithm(A, b);
+    
+    let mTableHTML = '<table style="width: 50%; border-collapse: collapse; margin: 20px auto;">';
+    mTableHTML += '<tr style="background-color: #f0f0f0;"><th style="border: 1px solid #ddd; padding: 10px;">i</th><th style="border: 1px solid #ddd; padding: 10px;">M<sub>i</sub></th></tr>';
+    
+    for (let i = 0; i <= n; i++) {
+        mTableHTML += `<tr><td style="border: 1px solid #ddd; padding: 10px; text-align: center;">${i}</td>`;
+        mTableHTML += `<td style="border: 1px solid #ddd; padding: 10px; text-align: center;">${M[i].toFixed(6)}</td></tr>`;
+    }
+    mTableHTML += '</table>';
+    
+    steps.push({
+        description: "Second Derivatives (M values)",
+        content: mTableHTML,
+        detail: ""
+    });
+    
+    // Step 4: Calculate spline coefficients
+    const splines = [];
+    for (let i = 0; i < n; i++) {
+        const a = points[i].y;
+        const b_coef = (points[i + 1].y - points[i].y) / h[i] - h[i] * (2 * M[i] + M[i + 1]) / 6;
+        const c = M[i] / 2;
+        const d = (M[i + 1] - M[i]) / (6 * h[i]);
+        
+        splines.push({ a, b: b_coef, c, d, x0: points[i].x });
+    }
+    
+    let splineHTML = '<div style="margin: 20px 0;">';
+    for (let i = 0; i < n; i++) {
+        splineHTML += `<p style="margin: 10px 0;">S<sub>${i}</sub>(x) = ${splines[i].a.toFixed(4)} + ${splines[i].b.toFixed(4)}(x - ${splines[i].x0.toFixed(4)}) + ${splines[i].c.toFixed(4)}(x - ${splines[i].x0.toFixed(4)})<sup>2</sup> + ${splines[i].d.toFixed(4)}(x - ${splines[i].x0.toFixed(4)})<sup>3</sup></p>`;
+        splineHTML += `<p style="margin: 5px 0 15px 20px; color: #666;">for x ∈ [${points[i].x.toFixed(4)}, ${points[i + 1].x.toFixed(4)}]</p>`;
+    }
+    splineHTML += '</div>';
+    
+    steps.push({
+        description: "Cubic Spline Equations",
+        content: splineHTML,
+        detail: "S<sub>i</sub>(x) = a + b(x-x<sub>i</sub>) + c(x-x<sub>i</sub>)<sup>2</sup> + d(x-x<sub>i</sub>)<sup>3</sup>"
+    });
+    
+    return { steps, splines };
+}
+
+function thomasAlgorithm(A, b) {
+    const n = b.length;
+    const c = Array(n).fill(0);
+    const d = Array(n).fill(0);
+    const x = Array(n).fill(0);
+    
+    // Forward elimination
+    c[0] = A[0][1] / A[0][0];
+    d[0] = b[0] / A[0][0];
+    
+    for (let i = 1; i < n; i++) {
+        const denom = A[i][i] - A[i][i - 1] * c[i - 1];
+        if (i < n - 1) {
+            c[i] = A[i][i + 1] / denom;
+        }
+        d[i] = (b[i] - A[i][i - 1] * d[i - 1]) / denom;
+    }
+    
+    // Back substitution
+    x[n - 1] = d[n - 1];
+    for (let i = n - 2; i >= 0; i--) {
+        x[i] = d[i] - c[i] * x[i + 1];
+    }
+    
+    return x;
+}
 // helper function 
   function split_equations(equations) {
         try {
@@ -843,6 +996,11 @@ useEffect(() => {
     name: "Jacobi Eigenvalue",
     description: 'Find eigenvalues and eigenvectors using Jacobi method',
     inputPrompt: 'Enter symmetric matrix rows separated by semicolons (e.g., 4 1 1; 1 3 2; 1 2 3):'
+  },
+  '9': {
+    name: "Spline",
+    description: 'Spline',
+    inputPrompt: 'enter value like  (0,0) (1,1) (2,0) (3,1)',
   }
   };
 
@@ -1110,6 +1268,20 @@ useEffect(() => {
     result = { success: false, error: eigenResult.error };
   }
   break;
+
+  // In your method selection dropdown or options, add:
+  // <option value="spline">Cubic Spline Interpolation</option>
+  
+  // In your solve handler, add this case:
+  case '9':
+      const splineData = parseSplineInput(input);
+      if (!splineData.success) {
+          // Handle error
+          return;
+      }
+      const splineResult = cubicSpline(splineData.points);
+      // Display splineResult.steps
+      break;
           default:
             result = { success: false, error: 'Unknown method' };
         }
